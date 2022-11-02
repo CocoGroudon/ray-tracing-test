@@ -42,7 +42,7 @@ class World:
         self.walls.append(Wall(self.dimensions[0]-1,0,self.dimensions[0]-1,self.dimensions[1]-1))
         self.walls.append(Wall(0, self.dimensions[1]-1,self.dimensions[0]-1,self.dimensions[1]-1))
 
-    def draw(self, surface:pygame.surface):
+    def draw(self, surface:pygame.Surface):
         for wall in self.walls:
             wall.draw(surface)
 
@@ -104,7 +104,7 @@ class Ray:
             return math.dist(self.pos, wallcollision)
         return False
 
-    def draw(self, screen:pygame.surface):
+    def draw(self, screen:pygame.Surface):
         pygame.draw.aaline(screen, (120,120,200), self.pos, self.get_pos_for_len(self.len))
 
 class Player:
@@ -120,24 +120,22 @@ class Player:
         self.rays = []
         self.set_FOV_Rays()
 
+    def move_left_right(self, left_right:int):
+        endx = self._pos[0] + left_right * math.cos(math.radians(self._angle+90))
+        endy = self._pos[1] + left_right * math.sin(math.radians(self._angle+90))
+        self.set_pos((endx, endy))
+        
+    def move_front_back(self, front_back:int):
+        endx = self._pos[0] + front_back * math.cos(math.radians(self._angle+180))
+        endy = self._pos[1] + front_back * math.sin(math.radians(self._angle+180))
+        self.set_pos((endx, endy))
+
     def change_angle(self, new_angle:float):
         before_angle = self._angle
         self._angle = new_angle
         self.look_ray.angle = new_angle
         for ray in self.rays:
             ray.angle += new_angle -before_angle
-
-    def draw(self, surface:pygame.Surface):
-        self.draw_rays(surface)
-        pygame.draw.aaline(surface, (0,255,0), self.look_ray.pos, self.look_ray.get_pos_for_len(100)) # for the looking direction ray
-
-    def draw_rays(self, surface:pygame.surface):
-        i = 0
-        for ray in self.rays:
-            i += 255/len(self.rays)
-            record = ray.check_intersection_with_walls(self.world.walls)
-            if record:
-                pygame.draw.aaline(surface, (i,i,i), ray.pos, record)
 
     def set_FOV_Rays(self):
         for angle in range(round(-self.FOV/2*self.resolution), round(self.FOV/2*self.resolution)):
@@ -163,28 +161,35 @@ class Game:
 
         self.world_size = (500, 500)
         self.world = World(self.world_size)
-        self.player = Player(self.world, pygame.mouse.get_pos(), 90, 10)
+        self.player = Player(self.world, (10,10), 90, 10)
         self.surface_2d = pygame.Surface(self.world_size, flags=pygame.SRCALPHA)
         self.surface_3d = pygame.Surface((900,600), flags=pygame.SRCALPHA)
 
-
-    def draw_look_ray(self, surface):
-        pygame.draw.aaline(surface, (0,0,255), self.look_ray.pos, self.look_ray.get_pos_for_len(100))
-
-
-    def draw2d(self, surface:pygame.surface):
-        surface.fill((0,0,0,0))
-        self.player.draw(surface)
-        self.world.draw(surface)
-
     def draw_vertical_line(self, surface:pygame.Surface, height:float, x:float, color:pygame.color, thickness:int):
         height *= 50
-        top = (self.size[1]-height)/2
-        bottom = (self.size[1]+height)/2
+        top = (surface.get_height()-height)/2
+        bottom = (surface.get_height()+height)/2
         pygame.draw.line(surface, color, (x, top), (x, bottom), math.floor(thickness))
+        
+    def draw_rays(self, surface:pygame.Surface):
+        i = 0
+        rays_amount = self.player.rays
+        for ray in self.player.rays:
+            i += 255/len(rays_amount)
+            record = ray.check_intersection_with_walls(self.world.walls)
+            if record:
+                pygame.draw.aaline(surface, (i,i,i), ray.pos, record)        
+        pygame.draw.aaline(surface, (0,255,0), self.player.look_ray.pos, self.player.look_ray.get_pos_for_len(100)) # for the looking direction ray
 
-    def draw3d(self, surface:pygame.surface):
-        surface.fill((0,0,0,0))
+    def draw2d(self, surface:pygame.Surface):
+        # surface.fill((0,0,0,0))
+        surface.fill((0,30,50))
+        self.draw_rays(self.surface_2d)
+        self.world.draw(self.surface_2d)
+
+    def draw3d(self, surface:pygame.Surface):
+        # surface.fill((0,0,0,0))
+        surface.fill((0,30,50))
         amount_rays = len(self.player.rays)
         step = self.surface_3d.get_width()/amount_rays
         i=0
@@ -204,7 +209,7 @@ class Game:
         mouse_pos_y= pygame.mouse.get_pos()[1] / self.size[1] * self.world_size[1]
         self.mouse_pos = mouse_pos_x, mouse_pos_y
         
-        self.player.set_pos(self.mouse_pos)
+        # self.player.set_pos(self.mouse_pos)
         self.player.change_angle(self.player._angle+1)
         
         
@@ -213,9 +218,8 @@ class Game:
         self.screen.blit(self.surface_3d, (0,0))
         
         self.draw2d(self.surface_2d)
-        self.screen.blit(self.surface_2d, (self.size[0]-self.world_size[0], self.size[1]-self.world_size[1]))
-
-        
+        self.screen.blit(self.surface_2d, (self.size[0]-self.world_size[0], 0))
+      
     def handle_keyinputs(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -223,6 +227,15 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F11:
                     pygame.display.toggle_fullscreen()
+                elif event.key == pygame.K_a:
+                    self.player.move_left_right(-10)
+                elif event.key == pygame.K_d:
+                    self.player.move_left_right(+10)
+                elif event.key == pygame.K_w:
+                    self.player.move_front_back(-10)
+                elif event.key == pygame.K_s:
+                    self.player.move_front_back(+10)
+
 
     def run(self):
         self.isRunning = True
