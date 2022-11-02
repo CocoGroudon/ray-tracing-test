@@ -4,6 +4,15 @@ import pygame
 import math
 import numpy as np
 
+def translate(oneMin, oneMay, Value, resultMin, resultMax):
+    return (Value - oneMin) / (oneMay - oneMin) * (resultMax - resultMin) + resultMin
+
+def draw_borders(surface:pygame.Surface, color:pygame.color, thickness:int)-> None:
+    dimensions = surface.get_width(), surface.get_height()
+    pygame.draw.line(surface, color, (0,0),(0,dimensions[1]-1), thickness)
+    pygame.draw.line(surface, color, (0,0),(dimensions[0]-1,0), thickness)
+    pygame.draw.line(surface, color, (dimensions[0]-1,0),(dimensions[0]-1,dimensions[1]-1), thickness)
+    pygame.draw.line(surface, color, (0,dimensions[1]-1),(dimensions[0]-1,dimensions[1]-1), thickness)
 
 @dataclass
 class Wall:
@@ -28,10 +37,10 @@ class World:
             self.walls.append(wall)
             
     def set_border_walls(self):
-        self.walls.append(Wall(0,0,0,self.dimensions[1]))
-        self.walls.append(Wall(0,0,self.dimensions[0],0))
-        self.walls.append(Wall(self.dimensions[0],0,self.dimensions[0],self.dimensions[1]))
-        self.walls.append(Wall(0, self.dimensions[1],self.dimensions[0],self.dimensions[1]))
+        self.walls.append(Wall(0,0,0,self.dimensions[1]-1))
+        self.walls.append(Wall(0,0,self.dimensions[0]-1,0))
+        self.walls.append(Wall(self.dimensions[0]-1,0,self.dimensions[0]-1,self.dimensions[1]-1))
+        self.walls.append(Wall(0, self.dimensions[1]-1,self.dimensions[0]-1,self.dimensions[1]-1))
 
     def draw(self, surface:pygame.surface):
         for wall in self.walls:
@@ -123,13 +132,16 @@ class Player:
         pygame.draw.aaline(surface, (0,255,0), self.look_ray.pos, self.look_ray.get_pos_for_len(100)) # for the looking direction ray
 
     def draw_rays(self, surface:pygame.surface):
+        i = 0
         for ray in self.rays:
+            i += 255/len(self.rays)
             record = ray.check_intersection_with_walls(self.world.walls)
             if record:
-                pygame.draw.aaline(surface, (255,0,0), ray.pos, record)
+                pygame.draw.aaline(surface, (i,i,i), ray.pos, record)
 
     def set_FOV_Rays(self):
-        for angle in range(-self.FOV//2, self.FOV//2, self.resolution):
+        for angle in range(round(-self.FOV/2*self.resolution), round(self.FOV/2*self.resolution)):
+            angle = angle / self.resolution
             self.rays.append(self.get_new_ray(angle))
 
     def get_new_ray(self, angle:float):
@@ -149,8 +161,11 @@ class Game:
         self.screen = pygame.display.set_mode((1600,900), pygame.RESIZABLE)
         self.backgroundcolor = (0, 43, 53)
 
-        self.world = World((500,500))
-        self.player = Player(self.world, pygame.mouse.get_pos(), 90, 1)
+        self.world_size = (500, 500)
+        self.world = World(self.world_size)
+        self.player = Player(self.world, pygame.mouse.get_pos(), 90, 10)
+        self.surface_2d = pygame.Surface(self.world_size, flags=pygame.SRCALPHA)
+        self.surface_3d = pygame.Surface((900,600), flags=pygame.SRCALPHA)
 
 
     def draw_look_ray(self, surface):
@@ -158,26 +173,53 @@ class Game:
 
 
     def draw2d(self, surface:pygame.surface):
+        surface.fill((0,0,0,0))
         self.player.draw(surface)
         self.world.draw(surface)
 
+    def draw_vertical_line(self, surface:pygame.Surface, height:float, x:float, color:pygame.color, thickness:int):
+        height *= 50
+        top = (self.size[1]-height)/2
+        bottom = (self.size[1]+height)/2
+        pygame.draw.line(surface, color, (x, top), (x, bottom), math.floor(thickness))
 
-    def draw3d(self, sruface:pygame.surface):
-        pass
+    def draw3d(self, surface:pygame.surface):
+        surface.fill((0,0,0,0))
+        amount_rays = len(self.player.rays)
+        step = self.surface_3d.get_width()/amount_rays
+        i=0
+        for index, ray in enumerate(self.player.rays):
+            i += 255/len(self.player.rays)
+            if (dist := ray.get_dist_to_walls(self.world.walls)) == 0: return
+            line_height = translate(0, max(self.world_size)*2, 1/dist*100, 0, self.size[1])
+            x_pos = index*step
+            self.draw_vertical_line(surface, line_height, x_pos, (i,i,i), step)
 
     def draw(self):
+        self.size = self.screen.get_width(), self.screen.get_height()
         self.screen.fill(self.backgroundcolor)
         
-        self.player.set_pos(pygame.mouse.get_pos())
+        
+        mouse_pos_x = pygame.mouse.get_pos()[0] / self.size[0] * self.world_size[0]
+        mouse_pos_y= pygame.mouse.get_pos()[1] / self.size[1] * self.world_size[1]
+        self.mouse_pos = mouse_pos_x, mouse_pos_y
+        
+        self.player.set_pos(self.mouse_pos)
         self.player.change_angle(self.player._angle+1)
         
-        self.draw2d(self.screen)
+        
+        self.draw3d(self.surface_3d)
+        draw_borders(self.surface_3d, (255,255,255), 1)
+        self.screen.blit(self.surface_3d, (0,0))
+        
+        self.draw2d(self.surface_2d)
+        self.screen.blit(self.surface_2d, (self.size[0]-self.world_size[0], self.size[1]-self.world_size[1]))
 
         
     def handle_keyinputs(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                self.stop()
+                self.isRunning = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F11:
                     pygame.display.toggle_fullscreen()
